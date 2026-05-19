@@ -1,0 +1,23 @@
+name: Deploy SSH Portfolio
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to cloudy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 46.101.183.111
+          port: 2222
+          username: duck
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            cd ~/ssh-port-pyth
+            git pull origin main
+            sudo systemctl restart ssh-portfolio
