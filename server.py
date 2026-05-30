@@ -34,6 +34,8 @@ SHOW = '\x1b[?25h'
 RST  = '\x1bc'
 
 # ── content ───────────────────────────────────────────────────
+SECTIONS = ['About', 'Projects', 'Contact']
+
 ROCKET = [
     '          *          ',
     '         /|\\         ',
@@ -62,11 +64,22 @@ WHOAMI = [
     ('',         'terminals and mountains'),
 ]
 
-SERVICES = [
-    ('learning.service',  'active (running)',   ['devops', 'networking', 'content creation']),
-    ('curiosity.service', 'active (running)',   ['philosophy', 'exploring new ideas', 'internet culture']),
-    ('homelab.service',   'active (expanding)', ['self-hosting', 'automation', 'maybe kubernetes someday™']),
-    ('projects.service',  'active (running)',   ['building cool things', 'making videos', 'coding for fun']),
+PROJECTS = [
+    {
+        'name':   'Spartan Homelab',
+        'status': 'ACTIVE',
+        'desc':   'Remote self-hosted infra running in India, managed from Germany over Tailscale VPN. Nextcloud, Jellyfin, automated media stack, cross-continent Prometheus/Grafana monitoring.',
+        'tags':   ['Debian', 'Docker', 'Tailscale', 'Grafana'],
+        'github': 'github.com/DarkSpartan26',
+    },
+    {
+        'name':   'SSH Portfolio',
+        'status': 'LIVE',
+        'desc':   'A Python SSH server that drops visitors into a TUI instead of a shell. No login needed — just SSH in.',
+        'tags':   ['Python', 'paramiko', 'DigitalOcean', 'systemd'],
+        'ssh':    'ssh ssh.priyanshukapoor.me',
+        'github': 'github.com/DarkSpartan26',
+    },
 ]
 
 CONTACT = [
@@ -89,63 +102,90 @@ def pad(s, n):
     vis = len(strip_ansi(s))
     return s + ' ' * max(0, n - vis)
 
-# ── columns ───────────────────────────────────────────────────
-def build_left(lcol):
-    lines = []
-    for row in ROCKET:
-        lines.append(cyan(row))
-    lines.append('')
-    lines.append(cyan('$ ') + white('systemctl list-units'))
-    lines.append('')
-    for svc_name, svc_status, children in SERVICES:
-        col       = green if 'running' in svc_status else yellow
-        left_vis  = 2 + len(svc_name)
-        right_vis = len(svc_status)
-        gap       = max(1, lcol - left_vis - right_vis)
-        lines.append(white('●') + ' ' + cyan(svc_name) + ' ' * gap + col(svc_status))
-        for i, child in enumerate(children):
-            prefix = '└ ' if i == len(children) - 1 else '├ '
-            lines.append('  ' + gray(prefix) + dim(child))
-        lines.append('')
+def wrap_text(text, width):
+    words = text.split()
+    lines, current, cur_len = [], [], 0
+    for word in words:
+        need = len(word) + (1 if current else 0)
+        if cur_len + need > width and current:
+            lines.append(' '.join(current))
+            current, cur_len = [word], len(word)
+        else:
+            if current:
+                cur_len += 1
+            current.append(word)
+            cur_len += len(word)
+    if current:
+        lines.append(' '.join(current))
     return lines
 
-def build_right():
-    lines = []
-    lines.append('')
-    lines.append(cyan('user@loki:~$ ') + white('whoami'))
-    lines.append('')
+# ── section renderers ─────────────────────────────────────────
+def render_about(W):
+    INDENT = '  '
+    sep    = 6
+    cw     = W - len(INDENT)
+    lcol   = (cw - sep) // 2
+
+    left = []
+    for row in ROCKET:
+        left.append(cyan(row))
+
+    right = []
+    right.append('')
+    right.append(cyan('user@loki:~$ ') + white('whoami'))
+    right.append('')
     for key, val in WHOAMI:
         if key:
-            lines.append(cyan(pad(key, 10)) + '  ' + white(val))
+            right.append(cyan(pad(key, 10)) + '  ' + white(val))
         else:
-            lines.append(' ' * 12 + white(val))
-    lines.append('')
-    lines.append(gray('─' * 28))
-    lines.append('')
-    for key, val in CONTACT:
-        lines.append(gray(pad(key, 8)) + '  ' + cyan(val))
-    return lines
+            right.append(' ' * 12 + white(val))
 
-def merge_cols(left, right, lcol, sep=4):
     n   = max(len(left), len(right))
     out = []
     for i in range(n):
         l = left[i]  if i < len(left)  else ''
         r = right[i] if i < len(right) else ''
-        out.append(pad(l, lcol) + ' ' * sep + r)
+        out.append(INDENT + pad(l, lcol) + ' ' * sep + r)
     return out
 
-# ── frame ─────────────────────────────────────────────────────
-def build_frame(cols):
-    W      = max(70, min(cols, 120))
-    rule   = gray('─' * W)
+def render_projects(W):
     INDENT = '  '
-    sep    = 4
-    cw     = W - len(INDENT)
-    lcol   = (cw - sep) // 2
-    rcol   = cw - sep - lcol  # noqa: F841
+    CW     = W - 4
+    lines  = []
+    for proj in PROJECTS:
+        badge_col = green if proj['status'] == 'LIVE' else yellow
+        badge     = badge_col(f"[{proj['status']}]")
+        name_vis  = len(proj['name'])
+        badge_vis = len(proj['status']) + 2
+        gap       = max(1, CW - name_vis - badge_vis)
+        lines.append(INDENT + white(bold(proj['name'])) + ' ' * gap + badge)
+        lines.append('')
+        for wline in wrap_text(proj['desc'], CW):
+            lines.append(INDENT + dim(wline))
+        lines.append('')
+        lines.append(INDENT + '  '.join(gray(f'[{t}]') for t in proj['tags']))
+        if 'ssh' in proj:
+            lines.append(INDENT + dim('ssh  ') + cyan(proj['ssh']))
+        lines.append(INDENT + dim('↗ ') + blue(proj['github']))
+        lines.append('')
+        lines.append(INDENT + gray('─' * CW))
+        lines.append('')
+    return lines
 
+def render_contact(W):
+    INDENT = '  '
+    lines  = ['' ]
+    for key, val in CONTACT:
+        lines.append(INDENT + gray(pad(key, 8)) + '  ' + cyan(val))
+    return lines
+
+# ── frame ─────────────────────────────────────────────────────
+def build_frame(selected, cols):
+    W    = max(70, min(cols, 120))
+    rule = gray('─' * W)
+    INDENT = '  '
     lines = []
+
     lines.append('')
     lines.append(center(cyan(bold('PRIYANSHU KAPOOR')), W))
     lines.append(center(dim('CS student exploring systems, ideas, and the internet one rabbit hole at a time.'), W))
@@ -153,13 +193,25 @@ def build_frame(cols):
     lines.append(rule)
     lines.append('')
 
-    for merged in merge_cols(build_left(lcol), build_right(), lcol, sep):
-        lines.append(INDENT + merged)
+    # nav
+    nav_parts = []
+    for i, s in enumerate(SECTIONS):
+        nav_parts.append(cyan('◆ ' + bold(s)) if i == selected else gray('  ' + s))
+    lines.append(INDENT + gray('   ·   ').join(nav_parts))
+    lines.append('')
+
+    section = SECTIONS[selected]
+    if section == 'About':
+        lines.extend(render_about(W))
+    elif section == 'Projects':
+        lines.extend(render_projects(W))
+    elif section == 'Contact':
+        lines.extend(render_contact(W))
 
     lines.append('')
     lines.append(rule)
     lines.append('')
-    lines.append(INDENT + dim('[') + gray(' q ') + dim('quit') + dim(' ]'))
+    lines.append(INDENT + dim('[') + gray(' ← → ') + dim('navigate') + gray('   ·   ') + dim('q ') + gray('quit') + dim(' ]'))
     lines.append('')
 
     return '\r\n'.join(lines)
@@ -171,10 +223,10 @@ class PortfolioInterface(paramiko.ServerInterface):
             return paramiko.OPEN_SUCCEEDED
         return paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
 
-    def check_auth_none(self, username):       return paramiko.AUTH_SUCCESSFUL
-    def check_auth_password(self, u, p):       return paramiko.AUTH_SUCCESSFUL
-    def check_auth_publickey(self, u, k):      return paramiko.AUTH_SUCCESSFUL
-    def get_allowed_auths(self, username):     return 'none,password,publickey'
+    def check_auth_none(self, username):   return paramiko.AUTH_SUCCESSFUL
+    def check_auth_password(self, u, p):   return paramiko.AUTH_SUCCESSFUL
+    def check_auth_publickey(self, u, k):  return paramiko.AUTH_SUCCESSFUL
+    def get_allowed_auths(self, username): return 'none,password,publickey'
 
     def check_channel_pty_request(self, channel, term, width, height, pixelwidth, pixelheight, modes):
         self.cols = width or 100
@@ -205,13 +257,19 @@ def handle_client(client_sock, addr):
         if channel is None:
             return
 
+        selected = 0
+
         def send(s):
             try:
                 channel.sendall(s.encode('utf-8'))
             except Exception:
                 pass
 
-        send(HIDE + CLR + build_frame(getattr(server, 'cols', 100)))
+        def draw():
+            send(CLR + build_frame(selected, getattr(server, 'cols', 100)))
+
+        send(HIDE)
+        draw()
 
         while True:
             try:
@@ -220,11 +278,22 @@ def handle_client(client_sock, addr):
                 break
             if not data:
                 break
+
             key = data.decode('utf-8', errors='replace')
+
             if key in ('q', 'Q', '\x03', '\x04'):
                 send(SHOW + RST)
                 channel.close()
                 break
+
+            prev = selected
+            if key in ('\x1b[D', 'h'):
+                selected = (selected - 1) % len(SECTIONS)
+            elif key in ('\x1b[C', 'l'):
+                selected = (selected + 1) % len(SECTIONS)
+
+            if selected != prev:
+                draw()
 
     except Exception as e:
         print(f'[error] {addr}: {e}')
@@ -266,4 +335,4 @@ def main():
 if __name__ == '__main__':
     main()
 
-# version 1.2
+# version 1.3
