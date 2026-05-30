@@ -4,24 +4,29 @@ import threading
 import paramiko
 import sys
 import os
+import re
 
 HOST_KEY_PATH = os.path.join(os.path.dirname(__file__), 'host_key')
 
 # ── ANSI ──────────────────────────────────────────────────────
-R     = '\x1b[0m'
-BOLD  = '\x1b[1m'
-DIM   = '\x1b[2m'
-CYAN  = '\x1b[96m'
-BLUE  = '\x1b[94m'
-GRAY  = '\x1b[90m'
-WHITE = '\x1b[97m'
+R      = '\x1b[0m'
+BOLD   = '\x1b[1m'
+DIM    = '\x1b[2m'
+CYAN   = '\x1b[96m'
+BLUE   = '\x1b[94m'
+GRAY   = '\x1b[90m'
+WHITE  = '\x1b[97m'
+GREEN  = '\x1b[92m'
+YELLOW = '\x1b[93m'
 
-def cyan(s):  return f'{CYAN}{s}{R}'
-def blue(s):  return f'{BLUE}{s}{R}'
-def gray(s):  return f'{GRAY}{s}{R}'
-def white(s): return f'{WHITE}{s}{R}'
-def dim(s):   return f'{DIM}{s}{R}'
-def bold(s):  return f'{BOLD}{s}{R}'
+def cyan(s):   return f'{CYAN}{s}{R}'
+def blue(s):   return f'{BLUE}{s}{R}'
+def gray(s):   return f'{GRAY}{s}{R}'
+def white(s):  return f'{WHITE}{s}{R}'
+def dim(s):    return f'{DIM}{s}{R}'
+def bold(s):   return f'{BOLD}{s}{R}'
+def green(s):  return f'{GREEN}{s}{R}'
+def yellow(s): return f'{YELLOW}{s}{R}'
 
 CLR  = '\x1b[2J\x1b[H'
 HIDE = '\x1b[?25l'
@@ -29,30 +34,52 @@ SHOW = '\x1b[?25h'
 RST  = '\x1bc'
 
 # ── content ───────────────────────────────────────────────────
-SECTIONS = ['Projects', 'Reflections', 'Contact']
+SECTIONS = ['About', 'Projects', 'Contact']
 
-CONTENT = {
-    'Projects': [
-        ('01', 'ssh-portfolio',  'this thing you are looking at'),
-        ('02', 'your-project',   'replace with real project description'),
-        ('03', 'another-thing',  'built it because nothing else did'),
-    ],
-    'Reflections': [
-        ('2025-11', 'on learning in a language that is not yours'),
-        ('2025-09', 'what makes a system feel alive'),
-        ('2025-07', 'notes on starting over in a new city'),
-    ],
-    'Contact': [
-        ('github', 'github.com/priyanshukapoor'),
-        ('email',  'hi@priyanshukapoor.me'),
-        ('web',    'priyanshukapoor.me'),
-        ('ssh',    'ssh ssh.priyanshukapoor.me'),
-    ],
-}
+PROJECTS = [
+    {
+        'name':   'Spartan Homelab',
+        'status': 'ACTIVE',
+        'desc':   'Remote self-hosted infra running in India, managed from Germany over Tailscale VPN. Nextcloud, Jellyfin, automated media stack, cross-continent Prometheus/Grafana monitoring.',
+        'tags':   ['Debian', 'Docker', 'Tailscale', 'Grafana'],
+        'github': 'github.com/DarkSpartan26',
+    },
+    {
+        'name':   'SSH Portfolio',
+        'status': 'LIVE',
+        'desc':   'A Python SSH server that drops visitors into a TUI instead of a shell. No login needed — just SSH in.',
+        'tags':   ['Python', 'paramiko', 'DigitalOcean', 'systemd'],
+        'ssh':    'ssh ssh.priyanshukapoor.me',
+        'github': 'github.com/DarkSpartan26',
+    },
+]
 
-# ── frame ─────────────────────────────────────────────────────
+WHOAMI = [
+    ('name',     'Priyanshu'),
+    ('role',     'CS student'),
+    ('focus',    'linux / infra / devops'),
+    ('status',   'building quietly'),
+    ('location', 'Germany'),
+    ('uptime',   'still exploring...'),
+    ('mood',     'somewhere between terminals and mountains'),
+]
+
+SERVICES = [
+    ('learning.service',  'active (running)',   ['devops', 'networking', 'content creation']),
+    ('curiosity.service', 'active (running)',   ['philosophy', 'exploring new ideas', 'internet culture']),
+    ('homelab.service',   'active (expanding)', ['self-hosting', 'automation', 'maybe kubernetes someday™']),
+    ('projects.service',  'active (running)',   ['building cool things', 'making videos', 'coding for fun']),
+]
+
+CONTACT = [
+    ('github', 'github.com/DarkSpartan26'),
+    ('email',  'hi@priyanshukapoor.me'),
+    ('web',    'priyanshukapoor.me'),
+    ('ssh',    'ssh ssh.priyanshukapoor.me'),
+]
+
+# ── helpers ───────────────────────────────────────────────────
 def strip_ansi(s):
-    import re
     return re.sub(r'\x1b\[[0-9;]*m', '', s)
 
 def center(s, w):
@@ -64,20 +91,34 @@ def pad(s, n):
     vis = len(strip_ansi(s))
     return s + ' ' * max(0, n - vis)
 
+def wrap_text(text, width):
+    words = text.split()
+    lines, current, cur_len = [], [], 0
+    for word in words:
+        need = len(word) + (1 if current else 0)
+        if cur_len + need > width and current:
+            lines.append(' '.join(current))
+            current, cur_len = [word], len(word)
+        else:
+            if current:
+                cur_len += 1
+            current.append(word)
+            cur_len += len(word)
+    if current:
+        lines.append(' '.join(current))
+    return lines
+
 def build_frame(selected, cols):
     W = max(60, min(cols, 110))
     rule = gray('─' * W)
+    INDENT = '  '
+    CW = W - 4
     lines = []
 
+    # header
     lines.append('')
     lines.append(center(cyan(bold('PRIYANSHU KAPOOR')), W))
-    lines.append(center(gray('builder  ·  cs student  ·  curious about systems'), W))
-    lines.append('')
-    lines.append(rule)
-    lines.append('')
-    lines.append('  ' + white('studying Informatik, building things on the side,'))
-    lines.append('  ' + dim('thinking about how technology shapes how we think.'))
-    lines.append('  ' + dim('lorem ipsum dolor sit amet — replace this with your own words.'))
+    lines.append(center(dim('CS student exploring systems, ideas, and the internet one rabbit hole at a time.'), W))
     lines.append('')
     lines.append(rule)
     lines.append('')
@@ -85,31 +126,60 @@ def build_frame(selected, cols):
     # nav
     nav_parts = []
     for i, s in enumerate(SECTIONS):
-        if i == selected:
-            nav_parts.append(cyan('◆ ' + bold(s)))
-        else:
-            nav_parts.append(gray('  ' + s))
-    lines.append('  ' + gray('   ·   ').join(nav_parts))
+        nav_parts.append(cyan('◆ ' + bold(s)) if i == selected else gray('  ' + s))
+    lines.append(INDENT + gray('   ·   ').join(nav_parts))
     lines.append('')
 
-    # content
     section = SECTIONS[selected]
-    items = CONTENT[section]
 
-    if section == 'Projects':
-        for key, name, desc in items:
-            lines.append('  ' + gray(f'[{key}]') + '  ' + cyan(pad(name, 18)) + '  ' + dim(desc))
-    elif section == 'Reflections':
-        for key, name in items:
-            lines.append('  ' + blue(pad(key, 10)) + '  ' + white(name))
+    if section == 'About':
+        lines.append(INDENT + cyan('user@loki:~$ ') + white('whoami'))
+        lines.append('')
+        for key, val in WHOAMI:
+            lines.append(INDENT + cyan(pad(key, 10)) + '  ' + white(val))
+        lines.append('')
+        lines.append(INDENT + cyan('user@loki:~$ ') + white('systemctl list-units --type=service'))
+        lines.append('')
+        for svc_name, svc_status, children in SERVICES:
+            col = green if 'running' in svc_status else yellow
+            left_vis  = 2 + len(svc_name)
+            right_vis = len(svc_status)
+            gap = max(1, W - 2 - left_vis - right_vis)
+            lines.append(INDENT + white('●') + ' ' + cyan(svc_name) + ' ' * gap + col(svc_status))
+            for i, child in enumerate(children):
+                prefix = '└ ' if i == len(children) - 1 else '├ '
+                lines.append(INDENT + '  ' + gray(prefix) + dim(child))
+            lines.append('')
+
+    elif section == 'Projects':
+        for proj in PROJECTS:
+            badge_col = green if proj['status'] == 'LIVE' else yellow
+            badge     = badge_col(f"[{proj['status']}]")
+            name_vis  = len(proj['name'])
+            badge_vis = len(proj['status']) + 2
+            gap       = max(1, CW - name_vis - badge_vis)
+            lines.append(INDENT + white(bold(proj['name'])) + ' ' * gap + badge)
+            lines.append('')
+            for wline in wrap_text(proj['desc'], CW):
+                lines.append(INDENT + dim(wline))
+            lines.append('')
+            lines.append(INDENT + '  '.join(gray(f'[{t}]') for t in proj['tags']))
+            if 'ssh' in proj:
+                lines.append(INDENT + dim('ssh  ') + cyan(proj['ssh']))
+            lines.append(INDENT + dim('↗ ') + blue(proj['github']))
+            lines.append('')
+            lines.append(INDENT + gray('─' * CW))
+            lines.append('')
+
     elif section == 'Contact':
-        for key, name in items:
-            lines.append('  ' + gray(pad(key, 8)) + '  ' + cyan(name))
+        lines.append('')
+        for key, val in CONTACT:
+            lines.append(INDENT + gray(pad(key, 8)) + '  ' + cyan(val))
 
     lines.append('')
     lines.append(rule)
     lines.append('')
-    lines.append('  ' + dim('[') + gray(' ← → ') + dim('navigate') + gray('   ·   ') + dim('q ') + gray('quit') + dim(' ]'))
+    lines.append(INDENT + dim('[') + gray(' ← → ') + dim('navigate') + gray('   ·   ') + dim('q ') + gray('quit') + dim(' ]'))
     lines.append('')
 
     return '\r\n'.join(lines)
@@ -176,7 +246,6 @@ def handle_client(client_sock, addr):
 
         send(HIDE + CLR + build_frame(selected, cols))
 
-        # key loop
         while True:
             try:
                 data = channel.recv(64)
@@ -188,16 +257,15 @@ def handle_client(client_sock, addr):
 
             key = data.decode('utf-8', errors='replace')
 
-            # quit
             if key in ('q', 'Q', '\x03', '\x04'):
                 send(SHOW + RST)
                 channel.close()
                 break
 
             prev = selected
-            if key in ('\x1b[D', 'h'):   # left
+            if key in ('\x1b[D', 'h'):
                 selected = (selected - 1) % len(SECTIONS)
-            elif key in ('\x1b[C', 'l'): # right
+            elif key in ('\x1b[C', 'l'):
                 selected = (selected + 1) % len(SECTIONS)
 
             if selected != prev:
