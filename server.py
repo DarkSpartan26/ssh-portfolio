@@ -34,24 +34,21 @@ SHOW = '\x1b[?25h'
 RST  = '\x1bc'
 
 # ── content ───────────────────────────────────────────────────
-SECTIONS = ['About', 'Projects', 'Contact']
-
-PROJECTS = [
-    {
-        'name':   'Spartan Homelab',
-        'status': 'ACTIVE',
-        'desc':   'Remote self-hosted infra running in India, managed from Germany over Tailscale VPN. Nextcloud, Jellyfin, automated media stack, cross-continent Prometheus/Grafana monitoring.',
-        'tags':   ['Debian', 'Docker', 'Tailscale', 'Grafana'],
-        'github': 'github.com/DarkSpartan26',
-    },
-    {
-        'name':   'SSH Portfolio',
-        'status': 'LIVE',
-        'desc':   'A Python SSH server that drops visitors into a TUI instead of a shell. No login needed — just SSH in.',
-        'tags':   ['Python', 'paramiko', 'DigitalOcean', 'systemd'],
-        'ssh':    'ssh ssh.priyanshukapoor.me',
-        'github': 'github.com/DarkSpartan26',
-    },
+ROCKET = [
+    '          *          ',
+    '         /|\\         ',
+    '        / | \\        ',
+    '       /  |  \\       ',
+    '      /   |   \\      ',
+    '     / [=====] \\     ',
+    '    /   [===]   \\    ',
+    '   /     [=]     \\   ',
+    '  /       |       \\  ',
+    ' /________|________\\ ',
+    '          |          ',
+    '         /|\\         ',
+    '        / | \\        ',
+    '       /  |  \\       ',
 ]
 
 WHOAMI = [
@@ -61,7 +58,8 @@ WHOAMI = [
     ('status',   'building quietly'),
     ('location', 'Germany'),
     ('uptime',   'still exploring...'),
-    ('mood',     'somewhere between terminals and mountains'),
+    ('mood',     'somewhere between'),
+    ('',         'terminals and mountains'),
 ]
 
 SERVICES = [
@@ -84,38 +82,70 @@ def strip_ansi(s):
 
 def center(s, w):
     vis = len(strip_ansi(s))
-    lp = max(0, (w - vis) // 2)
+    lp  = max(0, (w - vis) // 2)
     return ' ' * lp + s
 
 def pad(s, n):
     vis = len(strip_ansi(s))
     return s + ' ' * max(0, n - vis)
 
-def wrap_text(text, width):
-    words = text.split()
-    lines, current, cur_len = [], [], 0
-    for word in words:
-        need = len(word) + (1 if current else 0)
-        if cur_len + need > width and current:
-            lines.append(' '.join(current))
-            current, cur_len = [word], len(word)
-        else:
-            if current:
-                cur_len += 1
-            current.append(word)
-            cur_len += len(word)
-    if current:
-        lines.append(' '.join(current))
+# ── columns ───────────────────────────────────────────────────
+def build_left(lcol):
+    lines = []
+    for row in ROCKET:
+        lines.append(cyan(row))
+    lines.append('')
+    lines.append(cyan('$ ') + white('systemctl list-units'))
+    lines.append('')
+    for svc_name, svc_status, children in SERVICES:
+        col       = green if 'running' in svc_status else yellow
+        left_vis  = 2 + len(svc_name)
+        right_vis = len(svc_status)
+        gap       = max(1, lcol - left_vis - right_vis)
+        lines.append(white('●') + ' ' + cyan(svc_name) + ' ' * gap + col(svc_status))
+        for i, child in enumerate(children):
+            prefix = '└ ' if i == len(children) - 1 else '├ '
+            lines.append('  ' + gray(prefix) + dim(child))
+        lines.append('')
     return lines
 
-def build_frame(selected, cols):
-    W = max(60, min(cols, 110))
-    rule = gray('─' * W)
-    INDENT = '  '
-    CW = W - 4
+def build_right():
     lines = []
+    lines.append('')
+    lines.append(cyan('user@loki:~$ ') + white('whoami'))
+    lines.append('')
+    for key, val in WHOAMI:
+        if key:
+            lines.append(cyan(pad(key, 10)) + '  ' + white(val))
+        else:
+            lines.append(' ' * 12 + white(val))
+    lines.append('')
+    lines.append(gray('─' * 28))
+    lines.append('')
+    for key, val in CONTACT:
+        lines.append(gray(pad(key, 8)) + '  ' + cyan(val))
+    return lines
 
-    # header
+def merge_cols(left, right, lcol, sep=4):
+    n   = max(len(left), len(right))
+    out = []
+    for i in range(n):
+        l = left[i]  if i < len(left)  else ''
+        r = right[i] if i < len(right) else ''
+        out.append(pad(l, lcol) + ' ' * sep + r)
+    return out
+
+# ── frame ─────────────────────────────────────────────────────
+def build_frame(cols):
+    W      = max(70, min(cols, 120))
+    rule   = gray('─' * W)
+    INDENT = '  '
+    sep    = 4
+    cw     = W - len(INDENT)
+    lcol   = (cw - sep) // 2
+    rcol   = cw - sep - lcol  # noqa: F841
+
+    lines = []
     lines.append('')
     lines.append(center(cyan(bold('PRIYANSHU KAPOOR')), W))
     lines.append(center(dim('CS student exploring systems, ideas, and the internet one rabbit hole at a time.'), W))
@@ -123,85 +153,28 @@ def build_frame(selected, cols):
     lines.append(rule)
     lines.append('')
 
-    # nav
-    nav_parts = []
-    for i, s in enumerate(SECTIONS):
-        nav_parts.append(cyan('◆ ' + bold(s)) if i == selected else gray('  ' + s))
-    lines.append(INDENT + gray('   ·   ').join(nav_parts))
-    lines.append('')
-
-    section = SECTIONS[selected]
-
-    if section == 'About':
-        lines.append(INDENT + cyan('user@loki:~$ ') + white('whoami'))
-        lines.append('')
-        for key, val in WHOAMI:
-            lines.append(INDENT + cyan(pad(key, 10)) + '  ' + white(val))
-        lines.append('')
-        lines.append(INDENT + cyan('user@loki:~$ ') + white('systemctl list-units --type=service'))
-        lines.append('')
-        for svc_name, svc_status, children in SERVICES:
-            col = green if 'running' in svc_status else yellow
-            left_vis  = 2 + len(svc_name)
-            right_vis = len(svc_status)
-            gap = max(1, W - 2 - left_vis - right_vis)
-            lines.append(INDENT + white('●') + ' ' + cyan(svc_name) + ' ' * gap + col(svc_status))
-            for i, child in enumerate(children):
-                prefix = '└ ' if i == len(children) - 1 else '├ '
-                lines.append(INDENT + '  ' + gray(prefix) + dim(child))
-            lines.append('')
-
-    elif section == 'Projects':
-        for proj in PROJECTS:
-            badge_col = green if proj['status'] == 'LIVE' else yellow
-            badge     = badge_col(f"[{proj['status']}]")
-            name_vis  = len(proj['name'])
-            badge_vis = len(proj['status']) + 2
-            gap       = max(1, CW - name_vis - badge_vis)
-            lines.append(INDENT + white(bold(proj['name'])) + ' ' * gap + badge)
-            lines.append('')
-            for wline in wrap_text(proj['desc'], CW):
-                lines.append(INDENT + dim(wline))
-            lines.append('')
-            lines.append(INDENT + '  '.join(gray(f'[{t}]') for t in proj['tags']))
-            if 'ssh' in proj:
-                lines.append(INDENT + dim('ssh  ') + cyan(proj['ssh']))
-            lines.append(INDENT + dim('↗ ') + blue(proj['github']))
-            lines.append('')
-            lines.append(INDENT + gray('─' * CW))
-            lines.append('')
-
-    elif section == 'Contact':
-        lines.append('')
-        for key, val in CONTACT:
-            lines.append(INDENT + gray(pad(key, 8)) + '  ' + cyan(val))
+    for merged in merge_cols(build_left(lcol), build_right(), lcol, sep):
+        lines.append(INDENT + merged)
 
     lines.append('')
     lines.append(rule)
     lines.append('')
-    lines.append(INDENT + dim('[') + gray(' ← → ') + dim('navigate') + gray('   ·   ') + dim('q ') + gray('quit') + dim(' ]'))
+    lines.append(INDENT + dim('[') + gray(' q ') + dim('quit') + dim(' ]'))
     lines.append('')
 
     return '\r\n'.join(lines)
 
-# ── SSH server interface ───────────────────────────────────────
+# ── SSH server ────────────────────────────────────────────────
 class PortfolioInterface(paramiko.ServerInterface):
     def check_channel_request(self, kind, chanid):
         if kind == 'session':
             return paramiko.OPEN_SUCCEEDED
         return paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
 
-    def check_auth_none(self, username):
-        return paramiko.AUTH_SUCCESSFUL
-
-    def check_auth_password(self, username, password):
-        return paramiko.AUTH_SUCCESSFUL
-
-    def check_auth_publickey(self, username, key):
-        return paramiko.AUTH_SUCCESSFUL
-
-    def get_allowed_auths(self, username):
-        return 'none,password,publickey'
+    def check_auth_none(self, username):       return paramiko.AUTH_SUCCESSFUL
+    def check_auth_password(self, u, p):       return paramiko.AUTH_SUCCESSFUL
+    def check_auth_publickey(self, u, k):      return paramiko.AUTH_SUCCESSFUL
+    def get_allowed_auths(self, username):     return 'none,password,publickey'
 
     def check_channel_pty_request(self, channel, term, width, height, pixelwidth, pixelheight, modes):
         self.cols = width or 100
@@ -220,7 +193,7 @@ def handle_client(client_sock, addr):
     transport = None
     try:
         transport = paramiko.Transport(client_sock)
-        host_key = paramiko.Ed25519Key(filename=HOST_KEY_PATH)
+        host_key  = paramiko.Ed25519Key(filename=HOST_KEY_PATH)
         transport.add_server_key(host_key)
 
         server = PortfolioInterface()
@@ -232,44 +205,26 @@ def handle_client(client_sock, addr):
         if channel is None:
             return
 
-        selected = 0
-        cols = getattr(server, 'cols', 100)
-
         def send(s):
             try:
                 channel.sendall(s.encode('utf-8'))
             except Exception:
                 pass
 
-        def draw():
-            send(CLR + build_frame(selected, cols))
-
-        send(HIDE + CLR + build_frame(selected, cols))
+        send(HIDE + CLR + build_frame(getattr(server, 'cols', 100)))
 
         while True:
             try:
                 data = channel.recv(64)
             except Exception:
                 break
-
             if not data:
                 break
-
             key = data.decode('utf-8', errors='replace')
-
             if key in ('q', 'Q', '\x03', '\x04'):
                 send(SHOW + RST)
                 channel.close()
                 break
-
-            prev = selected
-            if key in ('\x1b[D', 'h'):
-                selected = (selected - 1) % len(SECTIONS)
-            elif key in ('\x1b[C', 'l'):
-                selected = (selected + 1) % len(SECTIONS)
-
-            if selected != prev:
-                draw()
 
     except Exception as e:
         print(f'[error] {addr}: {e}')
@@ -311,4 +266,4 @@ def main():
 if __name__ == '__main__':
     main()
 
-# this is updated
+# version 1.2
