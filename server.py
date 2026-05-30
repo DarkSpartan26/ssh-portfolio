@@ -34,7 +34,8 @@ SHOW = '\x1b[?25h'
 RST  = '\x1bc'
 
 # ── content ───────────────────────────────────────────────────
-SECTIONS = ['About', 'Projects', 'Contact']
+SECTIONS     = ['About', 'Projects', 'Contact']
+HEADER_LINES = 6  # blank + name + tagline + blank + rule + blank
 
 ROCKET = [
     '          *          ',
@@ -119,34 +120,54 @@ def wrap_text(text, width):
         lines.append(' '.join(current))
     return lines
 
+# ── static header (drawn once) ────────────────────────────────
+def build_header(W):
+    rule  = gray('─' * W)
+    parts = [
+        '',
+        center(cyan(bold('PRIYANSHU KAPOOR')), W),
+        center(dim('CS student exploring systems, ideas, and the internet one rabbit hole at a time.'), W),
+        '',
+        rule,
+        '',
+    ]
+    return '\r\n'.join(parts)
+
+# ── nav — bottom right via absolute cursor position ───────────
+def build_nav(selected, W, rows):
+    parts = []
+    for i, s in enumerate(SECTIONS):
+        parts.append(cyan('◆ ' + bold(s)) if i == selected else gray('  ' + s))
+    nav     = gray('   ·   ').join(parts)
+    nav_vis = len(strip_ansi(nav))
+    quit_h  = dim('[') + gray(' q ') + dim('quit') + dim(']')
+    # last row: quit at left, nav flush right
+    col = max(1, W - nav_vis)
+    return (
+        f'\x1b[{rows};1H'    + '  ' + quit_h +
+        f'\x1b[{rows};{col}H' + nav
+    )
+
 # ── section renderers ─────────────────────────────────────────
 def render_about(W):
     INDENT = '  '
     sep    = 6
-    cw     = W - len(INDENT)
-    lcol   = (cw - sep) // 2
+    lcol   = (W - len(INDENT) - sep) // 2
 
-    left = []
-    for row in ROCKET:
-        left.append(cyan(row))
-
-    right = []
-    right.append('')
-    right.append(cyan('user@loki:~$ ') + white('whoami'))
-    right.append('')
+    left  = [cyan(row) for row in ROCKET]
+    right = ['', cyan('user@loki:~$ ') + white('whoami'), '']
     for key, val in WHOAMI:
         if key:
             right.append(cyan(pad(key, 10)) + '  ' + white(val))
         else:
             right.append(' ' * 12 + white(val))
 
-    n   = max(len(left), len(right))
-    out = []
-    for i in range(n):
+    lines = []
+    for i in range(max(len(left), len(right))):
         l = left[i]  if i < len(left)  else ''
         r = right[i] if i < len(right) else ''
-        out.append(INDENT + pad(l, lcol) + ' ' * sep + r)
-    return out
+        lines.append(INDENT + pad(l, lcol) + ' ' * sep + r)
+    return lines
 
 def render_projects(W):
     INDENT = '  '
@@ -155,9 +176,7 @@ def render_projects(W):
     for proj in PROJECTS:
         badge_col = green if proj['status'] == 'LIVE' else yellow
         badge     = badge_col(f"[{proj['status']}]")
-        name_vis  = len(proj['name'])
-        badge_vis = len(proj['status']) + 2
-        gap       = max(1, CW - name_vis - badge_vis)
+        gap       = max(1, CW - len(proj['name']) - (len(proj['status']) + 2))
         lines.append(INDENT + white(bold(proj['name'])) + ' ' * gap + badge)
         lines.append('')
         for wline in wrap_text(proj['desc'], CW):
@@ -174,47 +193,33 @@ def render_projects(W):
 
 def render_contact(W):
     INDENT = '  '
-    lines  = ['' ]
+    lines  = ['']
     for key, val in CONTACT:
         lines.append(INDENT + gray(pad(key, 8)) + '  ' + cyan(val))
     return lines
 
-# ── frame ─────────────────────────────────────────────────────
-def build_frame(selected, cols):
-    W    = max(70, min(cols, 120))
-    rule = gray('─' * W)
-    INDENT = '  '
-    lines = []
+def get_section_lines(selected, W):
+    if   selected == 0: return render_about(W)
+    elif selected == 1: return render_projects(W)
+    else:               return render_contact(W)
 
-    lines.append('')
-    lines.append(center(cyan(bold('PRIYANSHU KAPOOR')), W))
-    lines.append(center(dim('CS student exploring systems, ideas, and the internet one rabbit hole at a time.'), W))
-    lines.append('')
-    lines.append(rule)
-    lines.append('')
+# ── draw functions ────────────────────────────────────────────
+def full_draw(selected, cols, rows):
+    W   = max(80, min(cols, 120))
+    out = CLR + build_header(W) + '\r\n'
+    for line in get_section_lines(selected, W):
+        out += line + '\r\n'
+    out += build_nav(selected, W, rows)
+    return out
 
-    # nav
-    nav_parts = []
-    for i, s in enumerate(SECTIONS):
-        nav_parts.append(cyan('◆ ' + bold(s)) if i == selected else gray('  ' + s))
-    lines.append(INDENT + gray('   ·   ').join(nav_parts))
-    lines.append('')
-
-    section = SECTIONS[selected]
-    if section == 'About':
-        lines.extend(render_about(W))
-    elif section == 'Projects':
-        lines.extend(render_projects(W))
-    elif section == 'Contact':
-        lines.extend(render_contact(W))
-
-    lines.append('')
-    lines.append(rule)
-    lines.append('')
-    lines.append(INDENT + dim('[') + gray(' ← → ') + dim('navigate') + gray('   ·   ') + dim('q ') + gray('quit') + dim(' ]'))
-    lines.append('')
-
-    return '\r\n'.join(lines)
+def partial_draw(selected, cols, rows):
+    """Only redraws section content — header stays untouched."""
+    W   = max(80, min(cols, 120))
+    out = f'\x1b[{HEADER_LINES + 1};1H\x1b[J'  # jump after header, clear down
+    for line in get_section_lines(selected, W):
+        out += line + '\r\n'
+    out += build_nav(selected, W, rows)
+    return out
 
 # ── SSH server ────────────────────────────────────────────────
 class PortfolioInterface(paramiko.ServerInterface):
@@ -223,10 +228,10 @@ class PortfolioInterface(paramiko.ServerInterface):
             return paramiko.OPEN_SUCCEEDED
         return paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
 
-    def check_auth_none(self, username):   return paramiko.AUTH_SUCCESSFUL
-    def check_auth_password(self, u, p):   return paramiko.AUTH_SUCCESSFUL
-    def check_auth_publickey(self, u, k):  return paramiko.AUTH_SUCCESSFUL
-    def get_allowed_auths(self, username): return 'none,password,publickey'
+    def check_auth_none(self, u):        return paramiko.AUTH_SUCCESSFUL
+    def check_auth_password(self, u, p): return paramiko.AUTH_SUCCESSFUL
+    def check_auth_publickey(self, u, k):return paramiko.AUTH_SUCCESSFUL
+    def get_allowed_auths(self, u):      return 'none,password,publickey'
 
     def check_channel_pty_request(self, channel, term, width, height, pixelwidth, pixelheight, modes):
         self.cols = width or 100
@@ -265,11 +270,10 @@ def handle_client(client_sock, addr):
             except Exception:
                 pass
 
-        def draw():
-            send(CLR + build_frame(selected, getattr(server, 'cols', 100)))
+        def cols(): return getattr(server, 'cols', 100)
+        def rows(): return getattr(server, 'rows', 40)
 
-        send(HIDE)
-        draw()
+        send(HIDE + full_draw(selected, cols(), rows()))
 
         while True:
             try:
@@ -293,7 +297,7 @@ def handle_client(client_sock, addr):
                 selected = (selected + 1) % len(SECTIONS)
 
             if selected != prev:
-                draw()
+                send(partial_draw(selected, cols(), rows()))
 
     except Exception as e:
         print(f'[error] {addr}: {e}')
@@ -335,4 +339,4 @@ def main():
 if __name__ == '__main__':
     main()
 
-# version 1.3
+# version 1.4
